@@ -1,0 +1,62 @@
+name: Build DocKing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo, pdo_mysql
+          ini-values: post_max_size=256M, upload_max_filesize=256M
+
+      - name: Install Composer deps
+        run: composer install --no-dev --optimize-autoloader
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install & build front-end
+        run: |
+          npm ci
+          npm run build
+
+      - name: Archive built assets
+        uses: actions/upload-artifact@v3
+        with:
+          name: public-assets
+          path: public/
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download built assets
+        uses: actions/download-artifact@v3
+        with:
+          name: public-assets
+          path: ./public
+
+      - name: Deploy to FTP server
+        uses: SamKirkland/FTP-Deploy-Action@4
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          local-dir: public
+          server-dir: httpdocs/public
